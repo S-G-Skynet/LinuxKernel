@@ -448,49 +448,74 @@ out:
     return ret;
 }
 
-static int cmd_mapping(int argc __attribute__((unused)), char **argv)
+static int cmd_meta(int argc __attribute__((unused)), char **argv)
 {
     const char *mnt = argv[2];
 
-    const char *fname = argv[3];
+    struct simplefs_meta_list hdr;
 
-    struct simplefs_file_mapping mapping;
+    struct simplefs_file_meta *arr = NULL;
 
-    memset(&mapping, 0, sizeof(mapping));
+    unsigned int i;
 
-    strncpy(mapping.name,
-            fname,
-            sizeof(mapping.name) - 1);
+    int ret = 1;
+
+    memset(&hdr, 0, sizeof(hdr));
 
     if (simplefs_ioctl_call(
             mnt,
-            SIMPLEFS_IOC_GET_MAPPING,
-            &mapping))
+            SIMPLEFS_IOC_GET_META,
+            &hdr))
         return 1;
 
-    printf("name:          %s\n",
-           mapping.name);
+    arr = calloc(hdr.count, sizeof(*arr));
 
-    printf("start_sector:  %llu\n",
-           (unsigned long long)
-           mapping.start_sector);
+    if (!arr) {
 
-    printf("sector_count:  %llu\n",
-           (unsigned long long)
-           mapping.sector_count);
+        fprintf(stderr,
+                "calloc failed\n");
 
-    printf("size_bytes:    %llu\n",
-           (unsigned long long)
-           mapping.size_bytes);
+        return 1;
+    }
 
-    printf("sectors:       [%llu .. %llu]\n",
-           (unsigned long long)
-           mapping.start_sector,
-           (unsigned long long)
-           (mapping.start_sector +
-            mapping.sector_count - 1));
+    hdr.max_count =
+        hdr.count;
 
-    return 0;
+    hdr.entries_ptr =
+        (uint64_t)(uintptr_t)arr;
+
+    if (simplefs_ioctl_call(
+            mnt,
+            SIMPLEFS_IOC_GET_META,
+            &hdr))
+        goto out;
+
+    printf("%-20s %-12s %-12s %s\n",
+           "NAME",
+           "OFFSET",
+           "SIZE",
+           "CRC32");
+
+    printf("--------------------------------------------------\n");
+
+    for (i = 0; i < hdr.count; i++) {
+
+        printf("%-20s %-12llu %-12llu 0x%08x\n",
+               arr[i].name,
+               (unsigned long long)
+               arr[i].offset_sector,
+               (unsigned long long)
+               arr[i].size_bytes,
+               arr[i].content_hash);
+    }
+
+    ret = 0;
+
+    out:
+
+        free(arr);
+
+    return ret;
 }
 
 static int cmd_verify(int argc __attribute__((unused)), char **argv)

@@ -105,6 +105,8 @@ int simplefs_ioc_erase_fs(struct super_block *sb)
     if (ret)
         return ret;
 
+    sbi->erased = true;
+
     return 0;
 }
 
@@ -123,10 +125,23 @@ int simplefs_ioc_get_meta(
     u32 i;
 
     if (copy_from_user(
-            &hdr,
-            arg,
-            sizeof(hdr)))
+        &hdr,
+        arg,
+        sizeof(hdr)))
         return -EFAULT;
+
+    if (hdr.max_count == 0) {
+
+        hdr.count = sbi->num_files;
+
+        if (copy_to_user(
+                arg,
+                &hdr,
+                sizeof(hdr)))
+            return -EFAULT;
+
+        return 0;
+    }
 
     if (unlikely(!hdr.entries_ptr))
         return -EINVAL;
