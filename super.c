@@ -160,73 +160,11 @@ int simplefs_fill_super(struct super_block *sb, void *data, int silent)
 
     } else {
 
-        pr_info("simplefs: no valid superblock found\n");
-        pr_info("simplefs: creating new filesystem\n");
+        pr_err("simplefs: no valid superblock found\n");
+        pr_err("simplefs: filesystem is corrupted\n");
 
-        if (sb_second_offset <= sb_first_offset + 1 ||
-            sb_second_offset + 1 >= total_sectors) {
-
-            pr_err(
-                "simplefs: invalid superblock offsets "
-                "(first=%lu second=%lu total=%llu)\n",
-                sb_first_offset,
-                sb_second_offset,
-                total_sectors
-            );
-
-            ret = -EINVAL;
-            goto err;
-        }
-
-        if (max_file_sectors == 0) {
-            pr_err("simplefs: max_file_sectors cannot be zero\n");
-            ret = -EINVAL;
-            goto err;
-        }
-
-        sbi->version          = SIMPLEFS_VERSION;
-        sbi->block_size       = SIMPLEFS_BLOCK_SIZE;
-
-        sbi->max_name_len =
-            min_t(u32,
-                  max_name_len_param,
-                  SIMPLEFS_NAME_MAX);
-
-        sbi->max_file_sectors = max_file_sectors;
-
-        sbi->sb_first_offset  = sb_first_offset;
-        sbi->sb_second_offset = sb_second_offset;
-
-        sbi->total_sectors = total_sectors;
-
-        sbi->num_files = simplefs_total_files(sbi);
-
-        simplefs_build_disk_sb(sbi, dsb_new);
-
-        ret = simplefs_write_sb_at(
-            sb,
-            sbi->sb_first_offset,
-            dsb_new
-        );
-
-        if (ret)
-            goto err;
-
-        ret = simplefs_write_sb_at(
-            sb,
-            sbi->sb_second_offset,
-            dsb_new
-        );
-
-        if (ret)
-            goto err;
-
-        pr_info(
-            "simplefs: initialized %u files "
-            "(max sectors per file=%u)\n",
-            sbi->num_files,
-            sbi->max_file_sectors
-        );
+        ret = -EUCLEAN;
+        goto err;
     }
 
     root = simplefs_get_root(sb);
