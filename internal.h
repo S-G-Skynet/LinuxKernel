@@ -23,6 +23,7 @@ struct simplefs_sb_info {
     u64 sb_first_offset;
     u64 sb_second_offset;
     u64 total_sectors;
+    bool erased;
 };
 
 struct simplefs_inode_info {

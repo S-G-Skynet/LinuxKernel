@@ -37,6 +37,12 @@ static ssize_t simplefs_do_rw(
 
     struct super_block *sb = inode->i_sb;
 
+    struct simplefs_sb_info *sbi =
+        sb->s_fs_info;
+
+    if (unlikely(sbi->erased))
+        return -EIO;
+
     loff_t pos = *ppos;
 
     size_t processed = 0;
