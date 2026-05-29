@@ -178,6 +178,7 @@ sectors:       [25 .. 32]
 ## 8. IOCTL: ZERO_ALL
 
 ```
+root@said-linux:~/myfs# ./userspace/simplefs_cli zero /mnt/simplefs
 root@said-linux:~/myfs# hexdump -C -n 32 -s $((25*512)) /dev/loop0
 00003200  00 00 00 00 00 00 00 00  00 00 00 00 00 00 00 00  |................|
 *
@@ -212,6 +213,7 @@ root@said-linux:~/myfs# ls /mnt/simplefs | wc -l
 ## 10. IOCTL: ERASE_FS и повторная инициализация
 
 ```
+root@said-linux:~/myfs# ./userspace/simplefs_cli erase /mnt/simplefs
 root@said-linux:~/myfs# umount /mnt/simplefs
 root@said-linux:~/myfs# mount -t simplefs /dev/loop0 /mnt/simplefs
 root@said-linux:~/myfs# dmesg | tail -5
@@ -232,4 +234,95 @@ root@said-linux:~/myfs# ls /mnt/simplefs | wc -l
 root@said-linux:~/myfs# umount /mnt/simplefs
 root@said-linux:~/myfs# rmmod simplefs
 root@said-linux:~/myfs# losetup -d /dev/loop0
+```
+
+# Исправления:
+Нужно было исправить:
+1. Если "поломать" оба суперблока (не сходится checksum), то вместо ошибки она будет заново сформрована
+2. Команда meta возвращает только 1024 первых файлов
+3. После команды erase файлы остаются и можно продолжать писать в fs
+
+После исправления тестирование:
+### Подготовка
+
+```
+dd if=/dev/zero of=disk.img bs=512 count=2048 status=none
+
+losetup -fP --show disk.img
+mkdir -p /mnt/simplefs
+insmod simplefs.ko sb_first_offset=0 sb_second_offset=64 max_file_sectors=1
+
+mount -t simplefs /dev/loop0 /mnt/simplefs
+dmesg | tail -4
+
+# ожидается:
+# simplefs: no valid superblock found
+# simplefs: creating new filesystem
+# simplefs: initialized 2046 files (max sectors per file=1)
+# simplefs: mounted (files=2046, sb1=0, sb2=64)
+```
+### Тест 1 — meta возвращает все файлы, не только 1024
+```
+ls /mnt/simplefs | wc -l
+./userspace/simplefs_cli meta /mnt/simplefs | grep -c "^file_"
+
+Оба числа должны быть 2046. До исправления второй вызов возвращал 1024.
+```
+### Тест 2 — после erase запись и чтение запрещены
+```
+# До erase — запись работает
+dd if=/dev/urandom of=/mnt/simplefs/file_0 bs=8 count=1 2>/dev/null
+echo "write before erase: $?"
+```
+ожидается 0
+ 
+Стираем ФС
+```
+./userspace/simplefs_cli erase /mnt/simplefs
+dd if=/dev/urandom of=/mnt/simplefs/file_0 bs=8 count=1 2>/dev/null
+echo "write after erase: $?"
+
+cat /mnt/simplefs/file_0
+echo "read after erase: $?"
+
+ls /mnt/simplefs
+echo "ls after erase: $?"
+```
+
+Ожидается ненулевые результаты в echo.
+
+До исправления после erase запись продолжала работать. Теперь любой доступ к файлам возвращает -EIO.
+
+Дополнительно проверяем, что после размонтирования и повторного монтирования ФС переинициализируется (оба суперблока
+были занулены erase):
+
+```
+umount /mnt/simplefs
+mount -t simplefs /dev/loop0 /mnt/simplefs
+dmesg | tail -4
+# simplefs: no valid superblock found
+# simplefs: creating new filesystem   ← blank-диск, не ошибка
+# simplefs: initialized 2046 files ...
+# simplefs: mounted ...
+```
+
+### Тест 3 — оба суперблока сломаны (ненулевые, невалидный CRC) → ошибка
+
+Портим оба суперблока случайными байтами
+
+sb_first_offset=0, sb_second_offset=64
+```
+dd if=/dev/urandom of=/dev/loop0 bs=512 count=1 conv=notrunc seek=0  status=none
+dd if=/dev/urandom of=/dev/loop0 bs=512 count=1 conv=notrunc seek=64 status=none
+
+# Монтируем — должно упасть
+mount -t simplefs /dev/loop0 /mnt/simplefs
+echo "exit: $?"
+# Должно выдать не нуль
+
+dmesg | tail -3
+# ожидается:
+# simplefs: mounted (files=2046, sb1=0, sb2=64)
+# simplefs: no valid superblock found
+# simplefs: filesystem is corrupted
 ```
