@@ -64,6 +64,11 @@ const struct super_operations simplefs_sops = {
     .drop_inode  = generic_delete_inode,
 };
 
+static bool simplefs_sb_blank(const struct simplefs_super_block *dsb)
+{
+    return memchr_inv(dsb, 0, sizeof(*dsb)) == NULL;
+}
+
 int simplefs_fill_super(struct super_block *sb, void *data, int silent)
 {
     struct simplefs_sb_info *sbi;
@@ -157,6 +162,38 @@ int simplefs_fill_super(struct super_block *sb, void *data, int silent)
 
         if (ret)
             goto err;
+
+    } else if (simplefs_sb_blank(dsb_primary) &&
+               simplefs_sb_blank(dsb_backup)) {
+
+        pr_info("simplefs: no valid superblock found\n");
+        pr_info("simplefs: creating new filesystem\n");
+
+        sbi->version          = SIMPLEFS_VERSION;
+        sbi->block_size       = SIMPLEFS_BLOCK_SIZE;
+        sbi->max_name_len     = max_name_len_param;
+        sbi->max_file_sectors = max_file_sectors;
+        sbi->sb_first_offset  = sb_first_offset;
+        sbi->sb_second_offset = sb_second_offset;
+        sbi->total_sectors    = total_sectors;
+        sbi->num_files        = simplefs_total_files(sbi);
+
+        simplefs_build_disk_sb(sbi, dsb_new);
+
+        ret = simplefs_write_sb_at(sb, sbi->sb_first_offset, dsb_new);
+        if (ret)
+            goto err;
+
+        ret = simplefs_write_sb_at(sb, sbi->sb_second_offset, dsb_new);
+        if (ret)
+            goto err;
+
+        pr_info(
+            "simplefs: initialized %u files "
+            "(max sectors per file=%u)\n",
+            sbi->num_files,
+            sbi->max_file_sectors
+        );
 
     } else {
 

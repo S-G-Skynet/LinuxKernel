@@ -18,17 +18,13 @@ static int simplefs_iterate(
     struct file *file,
     struct dir_context *ctx)
 {
-
-    struct simplefs_sb_info *sbi =
-    dir->i_sb->s_fs_info;
-
-    if (unlikely(sbi->erased))
-        return -EIO;
-    
     struct inode *dir = file_inode(file);
 
     struct simplefs_sb_info *sbi =
         dir->i_sb->s_fs_info;
+
+    if (unlikely(sbi->erased))
+        return -EIO;
 
     if (!dir_emit_dots(file, ctx))
         return 0;
@@ -72,16 +68,14 @@ static struct dentry *simplefs_lookup(
     struct dentry *dentry,
     unsigned int flags)
 {
+
+    struct super_block *sb = dir->i_sb;
+
     struct simplefs_sb_info *sbi =
     sb->s_fs_info;
 
     if (unlikely(sbi->erased))
         return ERR_PTR(-EIO);
-
-    struct super_block *sb = dir->i_sb;
-
-    struct simplefs_sb_info *sbi =
-        sb->s_fs_info;
 
     struct inode *inode = NULL;
 

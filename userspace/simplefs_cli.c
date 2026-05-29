@@ -383,69 +383,49 @@ static int cmd_erase(int argc __attribute__((unused)), char **argv)
     return 0;
 }
 
-static int cmd_meta(int argc __attribute__((unused)), char **argv)
+static int cmd_mapping(int argc __attribute__((unused)), char **argv)
 {
     const char *mnt = argv[2];
 
-    struct simplefs_meta_list hdr;
+    const char *fname = argv[3];
 
-    struct simplefs_file_meta *arr = NULL;
+    struct simplefs_file_mapping mapping;
 
-    unsigned int max = 1024;
+    memset(&mapping, 0, sizeof(mapping));
 
-    unsigned int i;
-
-    int ret = 1;
-
-    arr = calloc(max, sizeof(*arr));
-
-    if (!arr) {
-
-        fprintf(stderr,
-                "calloc failed\n");
-
-        return 1;
-    }
-
-    memset(&hdr, 0, sizeof(hdr));
-
-    hdr.max_count = max;
-
-    hdr.entries_ptr =
-        (uint64_t)(uintptr_t)arr;
+    strncpy(mapping.name,
+            fname,
+            sizeof(mapping.name) - 1);
 
     if (simplefs_ioctl_call(
             mnt,
-            SIMPLEFS_IOC_GET_META,
-            &hdr))
-        goto out;
+            SIMPLEFS_IOC_GET_MAPPING,
+            &mapping))
+        return 1;
 
-    printf("%-20s %-12s %-12s %s\n",
-           "NAME",
-           "OFFSET",
-           "SIZE",
-           "CRC32");
+    printf("name:          %s\n",
+           mapping.name);
 
-    printf("--------------------------------------------------\n");
+    printf("start_sector:  %llu\n",
+           (unsigned long long)
+           mapping.start_sector);
 
-    for (i = 0; i < hdr.count; i++) {
+    printf("sector_count:  %llu\n",
+           (unsigned long long)
+           mapping.sector_count);
 
-        printf("%-20s %-12llu %-12llu 0x%08x\n",
-               arr[i].name,
-               (unsigned long long)
-               arr[i].offset_sector,
-               (unsigned long long)
-               arr[i].size_bytes,
-               arr[i].content_hash);
-    }
+    printf("size_bytes:    %llu\n",
+           (unsigned long long)
+           mapping.size_bytes);
 
-    ret = 0;
+    printf("sectors:       [%llu .. %llu]\n",
+           (unsigned long long)
+           mapping.start_sector,
+           (unsigned long long)
+           (mapping.start_sector +
+            mapping.sector_count - 1));
 
-out:
-
-    free(arr);
-
-    return ret;
+    return 0;
 }
 
 static int cmd_meta(int argc __attribute__((unused)), char **argv)
